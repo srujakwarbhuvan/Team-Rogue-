@@ -272,7 +272,7 @@ MIT License (see `LICENSE.md`)
 
 - **Issues:** [GitHub Issues](https://github.com/srujakwarbhuvan/Team-Rogue-/issues)
 - **Discussions:** [GitHub Discussions](https://github.com/srujakwarbhuvan/Team-Rogue-/discussions)
-- **Email:** srujakwarbhuvan06@gmail.com
+- **Email:** srujakwarbhuvan06@gmail.com,yashthokne184@gmail.com,prasannatawandhe@gmail.com
   
 
 
