@@ -23,13 +23,6 @@ import android.os.IBinder;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.telephony.SmsManager;
-import android.app.usage.UsageStats;
-import android.app.usage.UsageStatsManager;
-import android.content.BroadcastReceiver;
-import android.content.IntentFilter;
-import java.util.List;
-import java.util.TreeMap;
-import java.util.SortedMap;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -71,15 +64,6 @@ public class ServiceMine extends Service implements SensorEventListener {
     SmsManager manager = SmsManager.getDefault();
     String myLocation;
 
-    private Location currentLocation; // Cache current location for reliable checks
-    // Anomaly Detection
-    private AnomalyDetector anomalyDetector;
-    private ScreenReceiver screenReceiver;
-    private Handler appSwitchHandler = new Handler(Looper.getMainLooper());
-    private Runnable appSwitchRunnable;
-    private String lastPackageName = "";
-    private static final long APP_CHECK_INTERVAL = 500; // Check every 0.5 seconds for instant reaction
-
     @Override
     public void onCreate() {
         super.onCreate();
@@ -99,12 +83,8 @@ public class ServiceMine extends Service implements SensorEventListener {
                 super.onLocationResult(locationResult);
                 for (Location location : locationResult.getLocations()) {
                     if (location != null) {
-                        currentLocation = location; // Update cached location
                         myLocation = "https://maps.google.com/maps?q=" + location.getLatitude() + ","
                                 + location.getLongitude();
-                        
-                        // Upload presence for nearby checks
-                        uploadUserPresence(location);
                     }
                 }
             }
@@ -153,19 +133,6 @@ public class ServiceMine extends Service implements SensorEventListener {
 
         initializeVoiceListening();
         listenForNearbyAlerts();
-
-        // Initialize Anomaly Detector
-        anomalyDetector = new AnomalyDetector();
-        
-        // Register Screen Receiver
-        screenReceiver = new ScreenReceiver();
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(Intent.ACTION_SCREEN_ON);
-        filter.addAction(Intent.ACTION_SCREEN_OFF);
-        registerReceiver(screenReceiver, filter);
-
-        // Start App Switch Monitoring
-        startAppSwitchMonitoring();
     }
 
     private void startLocationUpdates() {
@@ -698,81 +665,7 @@ public class ServiceMine extends Service implements SensorEventListener {
                 .collection("active_alerts")
                 .document(user.getUid())
                 .set(alert);
-                
-        // Count nearby helpers for the sender
-        countNearbyHelpers(location);
     }
-    
-    // NEW: Track active user locations for "Nearby Helpers" count
-    private void uploadUserPresence(Location location) {
-         com.google.firebase.auth.FirebaseUser user = com.google.firebase.auth.FirebaseAuth.getInstance()
-                .getCurrentUser();
-        if (user == null) return;
-        
-        java.util.Map<String, Object> presence = new java.util.HashMap<>();
-        presence.put("userId", user.getUid());
-        presence.put("latitude", location.getLatitude());
-        presence.put("longitude", location.getLongitude());
-        presence.put("timestamp", System.currentTimeMillis());
-        
-        com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                .collection("active_user_presence")
-                .document(user.getUid())
-                .set(presence);
-    }
-    
-    // NEW: Count helpers nearby (Sender Feedback)
-    private void countNearbyHelpers(Location myLocation) {
-        com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                .collection("active_user_presence")
-                .whereGreaterThan("timestamp", System.currentTimeMillis() - 5 * 60 * 1000) // Active in last 5 mins
-                .get()
-                .addOnSuccessListener(queryDocumentSnapshots -> {
-                    int nearbyCount = 0;
-                    for (com.google.firebase.firestore.DocumentSnapshot doc : queryDocumentSnapshots) {
-                         // Skip self
-                         if (doc.getId().equals(com.google.firebase.auth.FirebaseAuth.getInstance().getUid())) continue;
-                         
-                         Double lat = doc.getDouble("latitude");
-                         Double lng = doc.getDouble("longitude");
-                         if (lat != null && lng != null) {
-                             float[] results = new float[1];
-                             Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), lat, lng, results);
-                             if (results[0] <= 1000) { // Check within 1km (or 100m as per request? Request said 100m radius for alert, but let's show helpers in 1km so user feels safer?)
-                                 // User requested "100 meter Rdius ke under ... messages jana chahiye ... (receiver side) ... also... (sender side) dikhe ki kitne lok uske range me"
-                                 // "uske range me" usually implies the same range. So 100m.
-                                 if (results[0] <= 100) {
-                                     nearbyCount++;
-                                 }
-                             }
-                         }
-                    }
-                    
-                    if (nearbyCount > 0) {
-                         // Show Pop-up / Toast
-                         showSenderFeedback(nearbyCount);
-                    }
-                });
-    }
-
-    private void showSenderFeedback(int count) {
-        new Handler(Looper.getMainLooper()).post(() -> {
-             android.widget.Toast.makeText(getApplicationContext(), 
-                 count + " Helpers are within 100m range!", 
-                 android.widget.Toast.LENGTH_LONG).show();
-                 
-             // Also update notification if possible or send a local notification
-             NotificationManager m = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-             Notification notification = new Notification.Builder(this, "MYID")
-                .setContentTitle("SOS Active")
-                .setContentText(count + " active users found nearby!")
-                .setSmallIcon(R.drawable.siren)
-                .build();
-             m.notify(115, notification); // Update foreground notification
-        });
-    }
-
-
 
     private void listenForNearbyAlerts() {
         com.google.firebase.auth.FirebaseUser user = com.google.firebase.auth.FirebaseAuth.getInstance()
@@ -780,28 +673,18 @@ public class ServiceMine extends Service implements SensorEventListener {
         if (user == null)
             return;
 
-        // Simplify query to avoid Index issues. Filter in memory.
         com.google.firebase.firestore.FirebaseFirestore.getInstance()
                 .collection("active_alerts")
                 .whereEqualTo("status", "ACTIVE")
+                .whereGreaterThan("timestamp", System.currentTimeMillis() - 3600000) // Last 1 hour
                 .addSnapshotListener((value, error) -> {
-                    if (error != null) {
+                    if (error != null || value == null)
                         return;
-                    }
-                    if (value == null) return;
 
                     for (com.google.firebase.firestore.DocumentChange dc : value.getDocumentChanges()) {
-                        if (dc.getType() == com.google.firebase.firestore.DocumentChange.Type.ADDED ||
-                            dc.getType() == com.google.firebase.firestore.DocumentChange.Type.MODIFIED) {
-                                
+                        if (dc.getType() == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
                             String userId = dc.getDocument().getString("userId");
-                            Long timestamp = dc.getDocument().getLong("timestamp");
-                            
-                            // 1. Don't alert for self
-                            // 2. Only alert for recent events (last 10 mins) to avoid spamming old alerts on restart
-                            if (userId != null && !userId.equals(user.getUid()) && 
-                                timestamp != null && (System.currentTimeMillis() - timestamp) < 10 * 60 * 1000) {
-                                
+                            if (userId != null && !userId.equals(user.getUid())) {
                                 double lat = dc.getDocument().getDouble("latitude");
                                 double lng = dc.getDocument().getDouble("longitude");
                                 String type = dc.getDocument().getString("type");
@@ -814,49 +697,30 @@ public class ServiceMine extends Service implements SensorEventListener {
     }
 
     private void checkDistanceAndAlert(double lat, double lng, String type) {
-        // Use cached location if available
-        if (currentLocation != null) {
-             processDistanceCheck(currentLocation, lat, lng, type);
-        } else {
-            // Fallback to last known if cached is null
-            if (ActivityCompat.checkSelfPermission(this,
-                Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
-                
-            fusedLocationClient.getLastLocation().addOnSuccessListener(location -> {
-                if (location != null) {
-                    processDistanceCheck(location, lat, lng, type);
-                }
-            });
+        if (ActivityCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return;
         }
-    }
-    
-    private void processDistanceCheck(Location myLoc, double targetLat, double targetLng, String type) {
-         float[] results = new float[1];
-         Location.distanceBetween(myLoc.getLatitude(), myLoc.getLongitude(), targetLat, targetLng, results);
-         float distanceInMeters = results[0];
 
-         // User requested 100 meter radius for messages
-         if (distanceInMeters <= 100) { 
-             showNearbyAlertNotification(distanceInMeters, type, targetLat, targetLng);
-         }
+        fusedLocationClient.getLastLocation().addOnSuccessListener(location -> {
+            if (location != null) {
+                float[] results = new float[1];
+                Location.distanceBetween(location.getLatitude(), location.getLongitude(), lat, lng, results);
+                float distanceInMeters = results[0];
+
+                if (distanceInMeters <= 1000) { // 1km radius
+                    showNearbyAlertNotification(distanceInMeters, type, lat, lng);
+                }
+            }
+        });
     }
 
     private void showNearbyAlertNotification(float distance, String type, double lat, double lng) {
-        // Create an intent specifically for a popup dialog
-        Intent popupIntent = new Intent(this, AlertPopupActivity.class);
-        popupIntent.putExtra("lat", lat);
-        popupIntent.putExtra("lng", lng);
-        popupIntent.putExtra("type", type);
-        popupIntent.putExtra("distance", distance);
-        popupIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, (int) System.currentTimeMillis(), popupIntent,
-                PendingIntent.FLAG_IMMUTABLE);
-                
-        // Fallback to map if popup fails or for notification click
-        Intent mapIntent = new Intent(android.content.Intent.ACTION_VIEW,
+        Intent intent = new Intent(android.content.Intent.ACTION_VIEW,
                 android.net.Uri.parse("http://maps.google.com/maps?daddr=" + lat + "," + lng));
-        PendingIntent mapPendingIntent = PendingIntent.getActivity(this, (int) System.currentTimeMillis() + 1, mapIntent,
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, (int) System.currentTimeMillis(), intent,
                 PendingIntent.FLAG_IMMUTABLE);
 
         NotificationChannel channel = new NotificationChannel("NEARBY_ALERT", "Nearby Alerts",
@@ -865,88 +729,18 @@ public class ServiceMine extends Service implements SensorEventListener {
         m.createNotificationChannel(channel);
 
         Notification notification = new Notification.Builder(this, "NEARBY_ALERT")
-                .setContentTitle("🚨 SOS: " + (int)distance + "m AWAY!")
-                .setContentText("Emergency Check: " + type + ". Click to see map.")
+                .setContentTitle("🚨 SOMEONE NEARBY NEEDS HELP!")
+                .setContentText("Distance: " + (int) distance + "m. Emergency: " + type)
                 .setSmallIcon(R.drawable.siren)
-                .setContentIntent(mapPendingIntent)
-                .setFullScreenIntent(pendingIntent, true) // High priority heads-up
+                .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
                 .build();
 
         m.notify((int) System.currentTimeMillis(), notification);
-        
-        // Try to open the popup immediately
-        startActivity(popupIntent);
 
         // Vibrate to alert user
         if (vibrator != null) {
             vibrator.vibrate(VibrationEffect.createOneShot(2000, VibrationEffect.DEFAULT_AMPLITUDE));
-        }
-    }
-
-    private class ScreenReceiver extends BroadcastReceiver {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction();
-                if (Intent.ACTION_SCREEN_ON.equals(action)) {
-                    anomalyDetector.onScreenOn();
-                    // Rule 1: Frequency
-                    if (anomalyDetector.recordScreenToggle()) {
-                        triggerSOS();
-                    }
-                } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
-                    anomalyDetector.onScreenOff();
-                    // Rule 1: Frequency (toggling off also counts)
-                    if (anomalyDetector.recordScreenToggle()) {
-                        triggerSOS();
-                    }
-                }
-            }
-    }
-
-    private void startAppSwitchMonitoring() {
-        appSwitchRunnable = new Runnable() {
-            @Override
-            public void run() {
-                checkAppSwitch();
-                appSwitchHandler.postDelayed(this, APP_CHECK_INTERVAL);
-            }
-        };
-        appSwitchHandler.post(appSwitchRunnable);
-    }
-
-    private void checkAppSwitch() {
-        if (!isRunning) return;
-
-        UsageStatsManager usm = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
-        if (usm == null) return;
-
-        long time = System.currentTimeMillis();
-        // Query last 1 minute of stats
-        List<UsageStats> appList = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, time - 60000, time);
-
-        if (appList != null && !appList.isEmpty()) {
-            SortedMap<Long, UsageStats> mySortedMap = new TreeMap<>();
-            for (UsageStats usageStats : appList) {
-                mySortedMap.put(usageStats.getLastTimeUsed(), usageStats);
-            }
-            if (!mySortedMap.isEmpty()) {
-                String currentPackageName = mySortedMap.get(mySortedMap.lastKey()).getPackageName();
-
-                // Build-in constraint: ignore our own app if convenient, but rule says "Foreground app changes"
-                // So switching TO our app counts.
-                if (!lastPackageName.isEmpty() && !currentPackageName.equals(lastPackageName)) {
-                     if (anomalyDetector.recordAppSwitch()) {
-                        triggerSOS();
-                     }
-                }
-                lastPackageName = currentPackageName;
-            }
-        }
-        
-        // Rule 3 Check: Prolonged Inactivity
-        if (anomalyDetector != null && anomalyDetector.checkProlongedScreenInactivity()) {
-            triggerSOS();
         }
     }
 
@@ -959,21 +753,6 @@ public class ServiceMine extends Service implements SensorEventListener {
             // Stop Sensor Listener (Shake Detection)
             if (sensorManager != null) {
                 sensorManager.unregisterListener(this);
-            }
-            
-            // Stop Screen Receiver
-            if (screenReceiver != null) {
-                try {
-                    unregisterReceiver(screenReceiver);
-                } catch(IllegalArgumentException e) {
-                    // ignore if not registered
-                }
-                screenReceiver = null;
-            }
-
-            // Stop App Switch Monitor
-            if (appSwitchHandler != null && appSwitchRunnable != null) {
-                appSwitchHandler.removeCallbacks(appSwitchRunnable);
             }
 
             // Stop Inactivity Check
@@ -1007,49 +786,9 @@ public class ServiceMine extends Service implements SensorEventListener {
         }
     }
 
-    // Orientation Helpers
-    private float[] gravity = new float[3];
-    private float[] geomagnetic = new float[3];
-    private float[] lastOrientation = null;
-    private static final double ORIENTATION_CHANGE_THRESHOLD = Math.toRadians(45.0); // 45 degrees
-
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-            System.arraycopy(event.values, 0, gravity, 0, 3);
-            
-            // --- Rule 4: Orientation Volatility ---
-            // We use simple vector angle change for "Rotation". 
-            // If the gravity vector changes significant angle, it implies rotation.
-            if (anomalyDetector != null) {
-                if (lastOrientation == null) {
-                    lastOrientation = new float[3];
-                    System.arraycopy(gravity, 0, lastOrientation, 0, 3);
-                } else {
-                    double dot = gravity[0] * lastOrientation[0] + gravity[1] * lastOrientation[1] + gravity[2] * lastOrientation[2];
-                    double mag1 = Math.sqrt(gravity[0]*gravity[0] + gravity[1]*gravity[1] + gravity[2]*gravity[2]);
-                    double mag2 = Math.sqrt(lastOrientation[0]*lastOrientation[0] + lastOrientation[1]*lastOrientation[1] + lastOrientation[2]*lastOrientation[2]);
-                    
-                    if (mag1 > 0 && mag2 > 0) {
-                        double cosTheta = dot / (mag1 * mag2);
-                        // clamp for safety
-                        if (cosTheta > 1.0) cosTheta = 1.0;
-                        if (cosTheta < -1.0) cosTheta = -1.0;
-                        
-                        double angle = Math.acos(cosTheta);
-                        if (angle > ORIENTATION_CHANGE_THRESHOLD) {
-                             // Orientation changed significantly
-                             if (anomalyDetector.recordOrientationChange()) {
-                                 triggerSOS();
-                             }
-                             // Update reference
-                             System.arraycopy(gravity, 0, lastOrientation, 0, 3);
-                        }
-                    }
-                }
-            }
-
-            // --- Existing Shake Logic ---
             long currentTime = System.currentTimeMillis();
 
             float x = event.values[0];

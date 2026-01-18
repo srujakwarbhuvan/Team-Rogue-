@@ -287,12 +287,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        
-        // Check for Usage Stats Permission
-        if (!hasUsageStatsPermission()) {
-            requestUsageStatsPermission();
-        }
-
         appBar = findViewById(R.id.topAppBar);
         setSupportActionBar(appBar);
         initializeViews();
@@ -308,58 +302,6 @@ public class MainActivity extends AppCompatActivity {
             m.createNotificationChannel(channel);
         }
 
-    }
-
-    private boolean hasUsageStatsPermission() {
-        android.app.usage.UsageStatsManager usm = (android.app.usage.UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
-        long time = System.currentTimeMillis();
-        List<android.app.usage.UsageStats> stats = usm.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_DAILY, time - 1000 * 10, time);
-        return stats != null && !stats.isEmpty();
-    }
-
-    private void requestUsageStatsPermission() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Permission Required");
-        builder.setMessage("To detect panic situations (App Switching Anomaly), please grant Usage Access permission.");
-        builder.setPositiveButton("Grant", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                Intent intent = new Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS);
-                startActivity(intent);
-            }
-        });
-        builder.setNegativeButton("Cancel", null);
-        builder.show();
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
-            @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_CODE) {
-            // Check if all permissions are granted
-            boolean allPermissionsGranted = true;
-            for (int result : grantResults) {
-                if (result != PackageManager.PERMISSION_GRANTED) {
-                    allPermissionsGranted = false;
-                    break;
-                }
-            }
-
-            if (allPermissionsGranted) {
-                // All permissions are granted
-            } else {
-                Toast.makeText(this, "Some permissions were denied.", Toast.LENGTH_SHORT).show();
-                new AlertDialog.Builder(this).setTitle("Permission denied")
-                        .setMessage("If you reject permission, You can't use this service\n\n" +
-                                "Please turn on SMS and Location permission at [Setting] > [Permission]")
-                        .setPositiveButton("PROCEED", (dialog, which) -> openAppSettings())
-                        .setNegativeButton("CLOSE", (dialog, which) -> {
-                            Toast.makeText(MainActivity.this, "SMS Permission denied", Toast.LENGTH_SHORT).show();
-                            dialog.dismiss();
-                        }).show();
-            }
-        }
     }
 
     private void initializeViews() {
@@ -479,6 +421,48 @@ public class MainActivity extends AppCompatActivity {
                     isServiceActive = true;
                     updateServiceStatus();
                 }
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+            @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_CODE) {
+            // Check if all permissions are granted
+            boolean allPermissionsGranted = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    allPermissionsGranted = false;
+                    break;
+                }
+            }
+
+            if (allPermissionsGranted) {
+                // All permissions are granted, you can proceed with your tasks.
+                // For example, start your main activity or perform other operations.
+
+            } else {
+                // Some or all permissions were denied. Handle this situation.
+                Toast.makeText(this, "Some permissions were denied.", Toast.LENGTH_SHORT).show();
+
+                new AlertDialog.Builder(this).setTitle("Permission denied")
+                        .setMessage("If you reject permission, You can't use this service\n\n" +
+                                "Please turn on SMS and Location permission at [Setting] > [Permission]")
+                        .setPositiveButton("PROCEED", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                openAppSettings();
+                            }
+                        }).setNegativeButton("CLOSE", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+
+                                Toast.makeText(MainActivity.this, "SMS Permission denied", Toast.LENGTH_SHORT).show();
+                                dialog.dismiss();
+                            }
+                        }).show();
             }
         }
     }

@@ -20,7 +20,6 @@
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
@@ -95,13 +94,6 @@
             android:name=".HowToUseActivity"
             android:exported="false"
             android:theme="@style/Theme.SOS" />
-        <activity
-            android:name=".AlertPopupActivity"
-            android:exported="true"
-            android:theme="@style/Theme.AppCompat.Dialog"
-            android:excludeFromRecents="true"
-            android:taskAffinity=""
-            android:launchMode="singleInstance" />
 
         <service
             android:name=".ServiceMine"
