@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base Colors -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Modern Dark Theme Palette (Purple Edition) -->
+    <!-- Primary - Vibrant Purple -->
+    <color name="colorPrimary">#9C27B0</color>
+    <color name="colorPrimaryDark">#7B1FA2</color>
+    <color name="colorPrimaryContainer">#4A0072</color>
+    <color name="colorOnPrimaryContainer">#E1BEE7</color>
+
+    <!-- Secondary - Deep Purple/Violet -->
+    <color name="colorSecondary">#E040FB</color>
+    <color name="colorSecondaryContainer">#290038</color>
+    <color name="colorOnSecondaryContainer">#F3E5F5</color>
+
+    <!-- Tertiary - Warning/Siren Orange -->
+    <color name="colorTertiary">#FF8800</color>
+    <color name="colorTertiaryContainer">#4A2500</color>
+    <color name="colorOnTertiaryContainer">#FFDCC2</color>
+
+    <!-- Backgrounds - Deep Dark Grays -->
+    <color name="background_light">#0F1115</color> <!-- Main Background -->
+    <color name="surface_white">#1A1D24</color>    <!-- Card Background -->
+    <color name="surface_light">#242832</color>    <!-- Lighter Card Background -->
+
+    <!-- Text Colors -->
+    <color name="text_primary">#F7FAFC</color>     <!-- White-ish -->
+    <color name="text_secondary">#A0AEC0</color>   <!-- Light Gray -->
+    <color name="text_light">#718096</color>       <!-- Darker Gray -->
+
+    <!-- Functional Colors -->
+    <color name="colorError">#EF4444</color>
+    <color name="colorOnError">#FFFFFF</color>
+    <color name="colorSuccess">#00E676</color>
+
+    <!-- Legacy Colors (Restored for compatibility) -->
+    <color name="error_red">#EF4444</color>
+    <color name="success_green">#00E676</color>
+    <color name="warning_orange">#FF8800</color>
+
+    <!-- Material 3 mappings for convenience if needed -->
+    <color name="colorSurface">#0F1115</color>
+    <color name="colorOnSurface">#F7FAFC</color>
+    <color name="colorSurfaceVariant">#1A1D24</color>
+    <color name="colorOnSurfaceVariant">#A0AEC0</color>
+    <color name="colorOutline">#2D3748</color>
+</resources>
